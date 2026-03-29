@@ -110,76 +110,82 @@ def calcular_ranking_grupo(df_j, df_p, cat, grupo):
     return ranking.sort_values(by=['Puntos', 'DJ', 'JG'], ascending=False)
 
 # ******************************************************************************
-# **************************************************************************
-   # **************************************************************************
-    # TAB 1: FEED SOCIAL - FORZADO
+# ***# **************************************************************************
+    # **************************************************************************
+    # TAB 1: FEED SOCIAL - EL RASTREADOR (DEBUGGER)
     # **************************************************************************
     with tab1:
         st.subheader("📢 Muro de Resultados")
         
         import base64
-        # Intentamos leer la hoja Reportes
+        
+        # --- RASTREADOR 1: ¿CONECTA CON EL EXCEL? ---
         try:
-            df_feed_social = conn.read(spreadsheet=SHEET_URL, worksheet="Reportes", ttl=0)
-        except:
-            st.error("No se pudo leer la hoja 'Reportes'. Revisa el nombre.")
-            df_feed_social = pd.DataFrame()
+            df_test = conn.read(spreadsheet=SHEET_URL, worksheet="Reportes", ttl=0)
+            if df_test is not None:
+                st.write(f"✅ CONEXIÓN EXITOSA: Se encontraron {len(df_test)} filas en 'Reportes'.")
+                st.write(f"📋 COLUMNAS REALES: {list(df_test.columns)}")
+            else:
+                st.error("❌ LA HOJA LLEGÓ VACÍA (None).")
+        except Exception as e:
+            st.error(f"❌ ERROR CRÍTICO DE LECTURA: {e}")
+            df_test = pd.DataFrame()
 
-        if not df_feed_social.empty:
-            # Mostramos los últimos 5 sin filtros para ver si algo sale
-            ultimos_5 = df_feed_social.tail(5).iloc[::-1]
-            
-            for idx, fila in ultimos_5.iterrows():
-                # Variables seguras
-                p_id = str(fila.get('ID', idx))
-                ganador = str(fila.get('Ganador', 'Jugador 1'))
-                perdedor = str(fila.get('Perdedor', 'Jugador 2'))
-                score = str(fila.get('Score', '0-0'))
+        # --- RASTREADOR 2: ¿HAY PARTIDOS PARA MOSTRAR? ---
+        if not df_test.empty:
+            # Quitamos todos los filtros de 'Estado' para ver si así sale algo
+            noticias = df_test.tail(5).iloc[::-1]
+            st.write(f"mostrando las últimas {len(noticias)} entradas encontradas...")
+
+            for index, p in noticias.iterrows():
+                # Creamos un ID seguro
+                p_id = f"id_{index}"
                 
-                # Buscamos fotos (si falla, ponemos placeholder)
-                def get_img_p(nombre):
+                # --- RASTREADOR 3: ¿QUÉ DATOS TIENE CADA FILA? ---
+                # st.write(f"Fila {index}: {p['Ganador']} vs {p['Perdedor']} | Score: {p['Score']}")
+
+                # Función de foto simplificada para que no rompa nada
+                def get_img(nombre):
                     try:
-                        id_f = df_jugadores[df_jugadores['Nombre'] == nombre]['ID FOTO'].values[0]
-                        binario = descargar_foto_drive(id_f)
-                        if binario:
-                            return f'data:image/png;base64,{base64.b64encode(binario).decode()}'
+                        id_foto = df_jugadores[df_jugadores['Nombre'] == nombre]['ID FOTO'].values[0]
+                        res = descargar_foto_drive(id_foto)
+                        if res:
+                            return f'data:image/png;base64,{base64.b64encode(res).decode()}'
                     except: pass
                     return "https://via.placeholder.com/60"
 
-                img_g = get_img_p(ganador)
-                img_p = get_img_p(perdedor)
+                img_g = get_img(p['Ganador'])
+                img_p = get_img(p['Perdedor'])
 
-                # Tarjeta Visual
+                # TARJETA VISUAL
                 st.markdown(f'''
                     <div style="background:#1e2130; padding:15px; border-radius:15px; border:1px solid #444; margin-bottom:10px;">
                         <div style="display: flex; justify-content: space-around; align-items: center; text-align: center;">
                             <div style="width: 30%;">
-                                <img src="{img_g}" style="width: 55px; height: 55px; border-radius: 50%; border: 2px solid #28a745; object-fit: cover;">
-                                <p style="font-size: 11px; margin-top: 5px; color: white;">{ganador.split()[0]}</p>
+                                <img src="{img_g}" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid green;">
+                                <p style="font-size: 10px; color: white; margin-top:5px;">{str(p['Ganador']).split()[0]}</p>
                             </div>
                             <div style="width: 30%;">
-                                <h2 style="margin: 0; color: #00ffcc; font-size: 22px;">{score}</h2>
-                                <small style="color: #888;">{fila.get('Fecha', '')}</small>
+                                <h3 style="margin: 0; color: #00ffcc;">{p['Score']}</h3>
+                                <small style="color: #888;">{p['Fecha']}</small>
                             </div>
                             <div style="width: 30%;">
-                                <img src="{img_p}" style="width: 55px; height: 55px; border-radius: 50%; border: 2px solid #dc3545; object-fit: cover;">
-                                <p style="font-size: 11px; margin-top: 5px; color: white;">{perdedor.split()[0]}</p>
+                                <img src="{img_p}" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid red;">
+                                <p style="font-size: 10px; color: white; margin-top:5px;">{str(p['Perdedor']).split()[0]}</p>
                             </div>
                         </div>
                     </div>
                 ''', unsafe_allow_html=True)
 
-                # Botones (Forzados con columnas simples)
+                # BOTONES
                 c1, c2, c3 = st.columns(3)
-                u_mail = st.session_state.get('user_email', 'Invitado')
-                
-                with c1: st.button(f"👍", key=f"l_{p_id}", on_click=guardar_reaccion, args=(conn, p_id, u_mail, "like"))
-                with c2: st.button(f"🔥", key=f"f_{p_id}", on_click=guardar_reaccion, args=(conn, p_id, u_mail, "fire"))
-                with c3: st.button(f"😱", key=f"s_{p_id}", on_click=guardar_reaccion, args=(conn, p_id, u_mail, "surprise"))
+                with c1: st.button("👍", key=f"l_{p_id}")
+                with c2: st.button("🔥", key=f"f_{p_id}")
+                with c3: st.button("😱", key=f"s_{p_id}")
                 
                 st.write("---")
         else:
-            st.warning("La hoja de Reportes parece estar vacía.")
+            st.warning("⚠️ EL RASTREADOR DICE: No hay datos para procesar en el bucle.")
 # ******************************************************************************
 # 7. MOTOR DE INTELIGENCIA ARTIFICIAL (PREDICCIÓN DE PROBABILIDADES)
 # ******************************************************************************
